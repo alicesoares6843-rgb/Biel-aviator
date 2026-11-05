@@ -1,0 +1,177 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AVIATOR AI PRO</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#080d17;color:#f4f6ff;font-family:Arial,sans-serif;padding:16px}
+header{text-align:center;padding:18px 5px}
+h1{color:#36d6a0;margin:5px;font-size:27px}
+.sub{color:#9aa9bd;font-size:13px}
+.card{background:#121d2d;border:1px solid #26364c;border-radius:13px;padding:16px;margin:13px 0}
+h2{font-size:17px;margin:0 0 14px;color:#55dfb0}
+input,button{width:100%;padding:13px;border-radius:9px;border:1px solid #34465e;font-size:15px;margin:5px 0;background:#0b1422;color:white}
+button{background:#087e61;border:0;font-weight:bold}
+button.secondary{background:#26364c}
+button.danger{background:#813b45}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.stat{background:#0a1421;border-radius:9px;padding:13px}
+.stat small{display:block;color:#9aa9bd;margin-bottom:8px}
+.stat strong{font-size:22px;color:#46dfae}
+#history{display:flex;flex-wrap:wrap;gap:7px}
+.pill{background:#23364a;border-radius:8px;padding:8px 11px;font-weight:bold}
+canvas{width:100%;height:190px;background:#0a1421;border-radius:9px}
+.note{font-size:12px;color:#9aa9bd;line-height:1.5}
+#ocrStatus{color:#55dfb0;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+<h1>✈ AVIATOR AI PRO</h1>
+<div class="sub">Painel de análise estatística de multiplicadores</div>
+</header>
+
+<div class="card">
+<h2>Adicionar multiplicador</h2>
+<input id="number" type="number" min="1" step="0.01" placeholder="Exemplo: 2.50">
+<button onclick="add()">ADICIONAR RESULTADO</button>
+</div>
+
+<div class="card">
+<h2>📷 Importar histórico por imagem</h2>
+<input id="photo" type="file" accept="image/*">
+<button onclick="readImage()">LER IMAGEM (OCR)</button>
+<div id="ocrStatus">Selecione uma imagem do histórico.</div>
+<input id="ocrText" placeholder="Confira os números encontrados">
+<button class="secondary" onclick="importText()">IMPORTAR NÚMEROS</button>
+<p class="note">A leitura pode cometer erros. Confira e corrija os valores antes de importar.</p>
+</div>
+
+<div class="card">
+<h2>📊 Estatísticas do histórico</h2>
+<div class="stats">
+<div class="stat"><small>Total de rodadas</small><strong id="total">0</strong></div>
+<div class="stat"><small>Média</small><strong id="average">0x</strong></div>
+<div class="stat"><small>Mediana</small><strong id="median">0x</strong></div>
+<div class="stat"><small>Maior resultado</small><strong id="max">0x</strong></div>
+<div class="stat"><small>Abaixo de 2x</small><strong id="low">0%</strong></div>
+<div class="stat"><small>Acima de 10x</small><strong id="high">0%</strong></div>
+</div>
+</div>
+
+<div class="card">
+<h2>📈 Últimos resultados</h2>
+<canvas id="chart" width="700" height="230"></canvas>
+<p class="note">Gráfico descritivo dos resultados registrados, não uma previsão das próximas rodadas.</p>
+</div>
+
+<div class="card">
+<h2>📋 Histórico</h2>
+<div id="history">Nenhum resultado registrado.</div>
+<button class="secondary" onclick="exportData()">EXPORTAR CSV</button>
+<button class="danger" onclick="clearData()">APAGAR HISTÓRICO</button>
+</div>
+
+<div class="card">
+<h2>🧠 Análise transparente</h2>
+<p id="analysis" class="note">Adicione resultados para visualizar as estatísticas.</p>
+<p class="note">Importante: cada rodada pode ser independente. O histórico não permite garantir nem determinar o próximo multiplicador. Este painel não fornece sinais de apostas.</p>
+</div>
+
+<script>
+let data=[];
+try{data=JSON.parse(localStorage.getItem("aviatorHistory")||"[]")}catch(e){data=[]}
+
+function save(){
+ localStorage.setItem("aviatorHistory",JSON.stringify(data));
+ render();
+}
+function add(){
+ let v=parseFloat(document.getElementById("number").value);
+ if(!Number.isFinite(v)||v<1){alert("Digite um multiplicador válido, igual ou maior que 1.");return}
+ data.push(Math.round(v*100)/100);
+ document.getElementById("number").value="";
+ save();
+}
+function render(){
+ let n=data.length;
+ document.getElementById("total").textContent=n;
+ document.getElementById("history").innerHTML=n?
+ [...data].reverse().slice(0,100).map((v,i)=>'<span class="pill">'+v.toFixed(2)+'x</span>').join(""):"Nenhum resultado registrado.";
+ if(!n){
+ ["average","median","max"].forEach(id=>document.getElementById(id).textContent="0x");
+ document.getElementById("low").textContent="0%";
+ document.getElementById("high").textContent="0%";
+ document.getElementById("analysis").textContent="Adicione resultados para visualizar as estatísticas.";
+ draw();return;
+ }
+ let sorted=[...data].sort((a,b)=>a-b);
+ let avg=data.reduce((a,b)=>a+b,0)/n;
+ let med=n%2?sorted[(n-1)/2]:(sorted[n/2-1]+sorted[n/2])/2;
+ let low=data.filter(v=>v<2).length/n*100;
+ let high=data.filter(v=>v>=10).length/n*100;
+ document.getElementById("average").textContent=avg.toFixed(2)+"x";
+ document.getElementById("median").textContent=med.toFixed(2)+"x";
+ document.getElementById("max").textContent=Math.max(...data).toFixed(2)+"x";
+ document.getElementById("low").textContent=low.toFixed(1)+"%";
+ document.getElementById("high").textContent=high.toFixed(1)+"%";
+ document.getElementById("analysis").textContent=
+ "Foram analisadas "+n+" rodadas. "+low.toFixed(1)+"% ficaram abaixo de 2x e "+high.toFixed(1)+"% foram iguais ou superiores a 10x. Média: "+avg.toFixed(2)+"x. Esses dados descrevem somente o histórico inserido e não indicam o próximo resultado.";
+ draw();
+}
+function draw(){
+ let c=document.getElementById("chart"),ctx=c.getContext("2d");
+ ctx.clearRect(0,0,c.width,c.height);
+ let vals=data.slice(-30),max=Math.max(5,...vals);
+ ctx.strokeStyle="#34465e";ctx.fillStyle="#46dfae";ctx.lineWidth=1;
+ ctx.beginPath();ctx.moveTo(35,10);ctx.lineTo(35,205);ctx.lineTo(690,205);ctx.stroke();
+ vals.forEach((v,i)=>{
+ let x=43+i*(635/Math.max(vals.length,1));
+ let h=(v/max)*170;
+ ctx.fillRect(x,200-h,Math.max(5,570/Math.max(vals.length,1)),h);
+ });
+ ctx.fillStyle="#9aa9bd";ctx.font="12px Arial";
+ ctx.fillText("Multiplicadores recentes (máximo de 30)",40,222);
+}
+async function readImage(){
+ let file=document.getElementById("photo").files[0];
+ if(!file){alert("Escolha uma imagem primeiro.");return}
+ if(!window.Tesseract){alert("Biblioteca OCR indisponível. Verifique a internet.");return}
+ let status=document.getElementById("ocrStatus");
+ status.textContent="Lendo imagem... aguarde.";
+ try{
+ let result=await Tesseract.recognize(file,"eng");
+ let text=result.data.text;
+ document.getElementById("ocrText").value=text;
+ status.textContent="Leitura concluída. Confira os números antes de importar.";
+ }catch(e){status.textContent="Erro na leitura. Tente outra imagem."}
+}
+function importText(){
+ let txt=document.getElementById("ocrText").value;
+ let matches=txt.match(/\d+(?:[.,]\d+)?\s*x/gi)||[];
+ let nums=matches.map(x=>parseFloat(x.replace(/x/i,"").replace(",", "."))).filter(v=>Number.isFinite(v)&&v>=1&&v<=100000);
+ if(!nums.length){alert("Não encontrei números no formato 2.50x. Confira o texto.");return}
+ if(!confirm("Importar "+nums.length+" valores encontrados? Confira os números antes de confirmar."))return;
+ data.push(...nums);
+ save();
+}
+function clearData(){
+ if(confirm("Tem certeza que deseja apagar todo o histórico?")){
+ data=[];save();
+ }
+}
+function exportData(){
+ let csv="multiplicador\n"+data.map(v=>v.toFixed(2)).join("\n");
+ let a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+ a.download="historico-aviator.csv";a.click();
+ URL.revokeObjectURL(a.href);
+}
+render();
+</script>
+</body>
+</html>
